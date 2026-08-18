@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build Outputs & Binaries
+dist/
+build/
+Release_Mafengwo_Scraper/
+*.exe
+*.zip
+*.tar.gz
+*.dmg
+*.AppImage
+
+# Scraped Data & Output Folders
+output/
+data/
+
+# Temporary Browser Profiles & Session Storage
+temp_browser_profile/
+temp_login_profile/
+temp_test_profile/
+temp_*/
+*.tmp
+SingletonLock
+
+# Logs
+logs/
+logError/
+log_error/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test & Debug Scripts
+debug_*.js
+test_*.js
+test_*.html
+scratch/
+
+# OS & IDE Files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp

@@ -1,0 +1,52 @@
+{
+  "name": "mafengwo-scraper-desktop",
+  "version": "1.0.0",
+  "description": "Desktop Application for Scraping Mafengwo Articles to Clean TXT",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "build": "electron-builder --win --x64"
+  },
+  "keywords": [
+    "mafengwo",
+    "scraper",
+    "crawler",
+    "electron",
+    "desktop"
+  ],
+  "author": "Antigravity",
+  "license": "MIT",
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "fs-extra": "^11.2.0",
+    "puppeteer-core": "^23.1.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "devDependencies": {
+    "electron": "^31.4.0",
+    "electron-builder": "^24.13.3"
+  },
+  "build": {
+    "appId": "com.mafengwo.scraper",
+    "productName": "Mafengwo Scraper Pro",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": [
+        "portable"
+      ]
+    },
+    "portable": {
+      "artifactName": "Mafengwo Scraper Pro.exe"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "package.json"
+    ]
+  }
+}

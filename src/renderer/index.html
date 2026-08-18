@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mafengwo Scraper Pro - Tự Động Kéo Bài Viết Sang TXT</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo-group">
+        <div class="logo-icon">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+          </svg>
+        </div>
+        <div>
+          <h1 class="app-title">Mafengwo Scraper Pro</h1>
+          <p class="app-subtitle">Hệ Thống Tự Động Giải Captcha & Kéo Toàn Bộ Bài Viết Sang TXT Sạch</p>
+        </div>
+      </div>
+
+      <!-- Auth Controls & Status -->
+      <div class="auth-bar">
+        <div class="auth-card" id="authStatusCard">
+          <div class="status-indicator" id="authIndicator"></div>
+          <div class="auth-info">
+            <span class="auth-label">Tài khoản Mafengwo:</span>
+            <span class="auth-phone" id="displayPhone">15290810827</span>
+          </div>
+        </div>
+
+        <button id="btnAutoLogin" class="btn btn-primary btn-sm"
+          title="Tự động đăng nhập và giải Captcha kéo thả bằng AI Solver">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+          <span id="btnAutoLoginText">Tự Động Đăng Nhập & Giải Captcha</span>
+        </button>
+
+        <button id="btnOpenAuth" class="btn btn-secondary btn-sm" title="Mở cửa sổ trình duyệt hỗ trợ đăng nhập">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+          </svg>
+          <span>Đăng Nhập Thủ Công</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Grid -->
+    <main class="main-layout">
+      <!-- Left: Settings & Controls -->
+      <section class="panel control-panel">
+        <div class="panel-header">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3" />
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z" />
+          </svg>
+          <h2>Cấu Hình Cào Dữ Liệu</h2>
+        </div>
+
+        <form id="crawlForm" class="form-grid">
+          <!-- Target Count -->
+          <div class="form-group">
+            <label for="inputTargetCount">
+              <span>Số lượng bài cần kéo</span>
+              <span class="badge badge-accent">Chỉ tiêu</span>
+            </label>
+            <div class="input-with-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M7 20l4-16m2 16l4-16M6 9h14M4 15h14" />
+              </svg>
+              <input type="number" id="inputTargetCount" min="1" max="5000" value="20" required
+                placeholder="Nhập số bài (ví dụ: 20)">
+            </div>
+            <div class="quick-chips">
+              <button type="button" class="chip" data-count="10">10 bài</button>
+              <button type="button" class="chip active" data-count="20">20 bài</button>
+              <button type="button" class="chip" data-count="50">50 bài</button>
+              <button type="button" class="chip" data-count="100">100 bài</button>
+              <button type="button" class="chip" data-count="300">300 bài</button>
+            </div>
+          </div>
+
+          <!-- Start URL -->
+          <div class="form-group">
+            <label for="inputStartUrl">
+              <span>Đường dẫn khởi đầu (URL)</span>
+              <span class="badge">Nguồn cấp</span>
+            </label>
+            <div class="input-with-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+              </svg>
+              <input type="url" id="inputStartUrl" value="https://www.mafengwo.cn/" required
+                placeholder="https://www.mafengwo.cn/">
+            </div>
+            <select id="selectDestination" class="form-select" style="margin-top: 4px;">
+              <option value="https://www.mafengwo.cn/" selected>🔥 Trang Chủ Mafengwo (Mặc định) -
+                https://www.mafengwo.cn/</option>
+              <option value="https://www.mafengwo.cn/yj/10183/">🌟 Bắc Kinh (Beijing) -
+                https://www.mafengwo.cn/yj/10183/</option>
+              <option value="https://www.mafengwo.cn/yj/10088/">🏙️ Thượng Hải (Shanghai) -
+                https://www.mafengwo.cn/yj/10088/</option>
+              <option value="https://www.mafengwo.cn/yj/10065/">🐼 Thành Đô (Chengdu) -
+                https://www.mafengwo.cn/yj/10065/</option>
+              <option value="https://www.mafengwo.cn/yj/10206/">🍵 Hàng Châu (Hangzhou) -
+                https://www.mafengwo.cn/yj/10206/</option>
+              <option value="https://www.mafengwo.cn/yj/10132/">🍲 Trùng Khánh (Chongqing) -
+                https://www.mafengwo.cn/yj/10132/</option>
+              <option value="https://www.mafengwo.cn/yj/10186/">🏝️ Tam Á (Sanya) - https://www.mafengwo.cn/yj/10186/
+              </option>
+              <option value="https://www.mafengwo.cn/yj/10095/">🏯 Tây An (Xi'an) - https://www.mafengwo.cn/yj/10095/
+              </option>
+              <option value="https://www.mafengwo.cn/yj/10807/">🌸 Côn Minh (Kunming) -
+                https://www.mafengwo.cn/yj/10807/</option>
+              <option value="https://www.mafengwo.cn/yj/10035/">🌄 Đại Lý (Dali) - https://www.mafengwo.cn/yj/10035/
+              </option>
+              <option value="https://www.mafengwo.cn/gonglve/">📖 Cẩm Nang Du Lịch Toàn Quốc -
+                https://www.mafengwo.cn/gonglve/</option>
+              <option value="custom">✏️ Nhập Link Tùy Chỉnh Khác...</option>
+            </select>
+          </div>
+
+          <!-- Keyword Input -->
+          <div class="form-group" id="groupKeyword">
+            <label for="inputKeyword">
+              <span>Từ khóa tìm kiếm (Keyword)</span>
+              <span class="badge badge-accent">Tùy chọn lọc</span>
+            </label>
+            <div class="input-with-icon">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <!-- <circle cx="11" cy="11" r="8" /> -->
+                <!-- <line x1="21" y1="21" x2="16.65" y2="16.65" /> -->
+              </svg>
+              <input type="text" id="inputKeyword" value="Anh Trọng đẹp trai hihi" placeholder="Nhập từ khóa">
+            </div>
+          </div>
+
+          <!-- Output Folder -->
+          <div class="form-group">
+            <label for="inputBaseDir">
+              <span>Thư mục lưu trữ</span>
+              <span class="badge badge-subtle">Tự động đặt tên thời gian</span>
+            </label>
+            <div class="input-with-action">
+              <input type="text" id="inputBaseDir" readonly placeholder="Mặc định: Thư mục data (cùng cấp phần mềm)">
+              <button type="button" id="btnSelectFolder" class="btn btn-secondary" title="Chọn thư mục đích">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                </svg>
+                Chọn
+              </button>
+            </div>
+            <p class="form-hint" id="folderPreviewHint">Sẽ tự động lưu vào:
+              <code>data/mafengwo_articles_YYYY-MM-DD_HH-mm-ss</code>
+            </p>
+          </div>
+
+          <!-- Browser Selection & Delay -->
+          <div class="form-row-2">
+            <div class="form-group">
+              <label for="selectBrowser">
+                <span>Trình duyệt</span>
+                <span class="badge badge-accent">Mặc định: Chrome</span>
+              </label>
+              <select id="selectBrowser" class="form-select">
+                <option value="chrome" selected>🌐 Google Chrome (Mặc định)</option>
+                <option value="edge">🌊 Microsoft Edge</option>
+                <option value="auto">⚡ Tự động tìm kiếm</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="inputDelay">Độ trễ mỗi bài (ms)</label>
+              <input type="number" id="inputDelay" min="500" max="10000" step="500" value="2000">
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="checkbox-container">
+              <input type="checkbox" id="checkShowBrowser">
+              <span class="checkmark"></span>
+              <span>Hiện cửa sổ trình duyệt khi cào dữ liệu</span>
+            </label>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="action-buttons">
+            <button type="submit" id="btnStart" class="btn btn-primary btn-lg">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <polygon points="5 3 19 12 5 21 5 3" />
+              </svg>
+              <span>Bắt Đầu Kéo Bài</span>
+            </button>
+
+            <button type="button" id="btnPause" class="btn btn-warning btn-lg" disabled>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="6" y="4" width="4" height="16" />
+                <rect x="14" y="4" width="4" height="16" />
+              </svg>
+              <span id="btnPauseText">Tạm Dừng</span>
+            </button>
+
+            <button type="button" id="btnStop" class="btn btn-danger btn-lg" disabled>
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="4" y="4" width="16" height="16" />
+              </svg>
+              <span>Dừng</span>
+            </button>
+          </div>
+        </form>
+
+        <!-- Current Output Folder Quick Access -->
+        <div class="output-quick-box" id="outputQuickBox" style="display: none;">
+          <div class="output-quick-header">
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#10b981" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+            <span class="output-quick-title">Thư mục bài viết vừa lưu:</span>
+          </div>
+          <div class="output-quick-path" id="currentOutputFolderPath">...</div>
+          <button type="button" id="btnOpenOutputFolder" class="btn btn-success btn-sm">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M5 19a2 2 0 01-2-2V7a2 2 0 012-2h4l2 2h4a2 2 0 012 2v1M5 19h14a2 2 0 002-2v-5a2 2 0 00-2-2H9a2 2 0 00-2 2v5a2 2 0 01-2 2z" />
+            </svg>
+            Mở Thư Mục Này
+          </button>
+        </div>
+      </section>
+
+      <!-- Right: Progress, Scraped List & Live Logs -->
+      <section class="panel display-panel">
+        <!-- Progress Summary -->
+        <div class="progress-section">
+          <div class="progress-header">
+            <div class="stat-item">
+              <span class="stat-label">Tiến Độ Kéo</span>
+              <span class="stat-value" id="statCount">0 / 20 bài</span>
+            </div>
+            <div class="stat-item text-center">
+              <span class="stat-label">Trang Hiện Tại</span>
+              <span class="stat-value accent" id="statPage">Trang 1</span>
+            </div>
+            <div class="stat-item text-right">
+              <span class="stat-label">Tỷ Lệ Hoàn Thành</span>
+              <span class="stat-value highlight" id="statPercent">0%</span>
+            </div>
+          </div>
+
+          <div class="progress-bar-track">
+            <div class="progress-bar-fill" id="progressBarFill" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Tabbed Container: List & Console Logs -->
+        <div class="tabs-container">
+          <div class="tab-headers">
+            <button class="tab-btn active" data-tab="tabPosts">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+              Bài Viết Đã Kéo (<span id="tabCount">0</span>)
+            </button>
+            <button class="tab-btn" data-tab="tabLogs">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="4 17 10 11 4 5" />
+                <line x1="12" y1="19" x2="20" y2="19" />
+              </svg>
+              Nhật Ký Thực Thi (Live Logs)
+            </button>
+            <div class="tab-actions">
+              <button id="btnClearLogs" class="btn-icon" title="Xóa log">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <!-- Tab Content: Posts Table -->
+          <div class="tab-pane active" id="tabPosts">
+            <div class="table-container">
+              <table class="posts-table">
+                <thead>
+                  <tr>
+                    <th style="width: 50px;">STT</th>
+                    <th>Tiêu Đề Bài Viết</th>
+                    <th style="width: 140px;">Tác Giả</th>
+                    <th style="width: 120px;">Dung Lượng</th>
+                    <th style="width: 100px; text-align: center;">Thao Tác</th>
+                  </tr>
+                </thead>
+                <tbody id="postsTableBody">
+                  <tr class="empty-row">
+                    <td colspan="5">
+                      <div class="empty-state">
+                        <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor"
+                          stroke-width="1.5">
+                          <path stroke-linecap="round" stroke-linejoin="round"
+                            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                        </svg>
+                        <p>Chưa có bài viết nào được kéo.</p>
+                        <span>Nhấn <strong>"Bắt Đầu Kéo Bài"</strong> để tiến hành cào dữ liệu tự động.</span>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Tab Content: Live Logs -->
+          <div class="tab-pane" id="tabLogs">
+            <div class="log-terminal" id="logTerminal">
+              <div class="log-entry info">
+                <span class="log-time">[Hệ thống]</span>
+                <span class="log-text">Mafengwo Scraper Pro đã sẵn sàng với bộ giải Captcha thông minh.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+
+</html>

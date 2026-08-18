@@ -1,0 +1,56 @@
+================================================================================
+           HƯỚNG DẪN SỬ DỤNG PHẦN MỀM CÀO BÀI VIẾT MAFENGWO PRO
+================================================================================
+
+1. GIỚI THIỆU:
+   - Phần mềm chuyên dụng tự động tải bài viết và lịch trình du lịch từ Mafengwo.cn.
+   - Tự động bóc tách Mục Lục (游记目录) đánh số từ 1..n theo chuẩn.
+   - Tự động lọc sạch 100% hình ảnh rác, xuất ra file .txt chuẩn hóa có đầy đủ
+     thông tin (Tiêu đề, Tác giả, Level, Ngày đăng, View, Follow, Share, Chi phí, Mục lục...).
+   - Hỗ trợ cào theo Từ khóa (Keyword) hoặc theo Đường dẫn (URL).
+   - Tích hợp công nghệ vượt mã bảo mật WAF và giải Captcha kéo thả tự động.
+
+2. CẤU TRÚC THƯ MỤC:
+   ├── Mafengwo Scraper Pro.exe   (File chạy chính - chỉ cần bấm đúp là chạy)
+   ├── data/                      (Thư mục tự động lưu các bài viết cào được)
+   ├── logError/                  (Thư mục tự động lưu log lỗi chi tiết theo từng ngày)
+   └── HUONG_DAN_SU_DUNG.txt      (File hướng dẫn này)
+
+3. CÁCH SỬ DỤNG:
+   Bước 1: Mở file "Mafengwo Scraper Pro.exe" (Không cần cài đặt Node.js hay phần mềm phụ).
+   Bước 2: 
+     - Nhấn nút "Tự Động Đăng Nhập & Giải Captcha" để hệ thống kết nối và lưu phiên làm việc.
+     - Tài khoản mặc định: 15290810827 / Mật khẩu: trangchu1234P#
+   Bước 3:
+     - Chọn số lượng bài muốn tải (VD: 20, 50, 100 bài).
+     - Nhập từ khóa tìm kiếm (VD: Việt Nam, Đà Nẵng, Tokyo...) hoặc chọn Link điểm đến.
+     - Thư mục lưu trữ: Nếu để trống, phần mềm sẽ tự động lưu vào thư mục "data/".
+   Bước 4:
+     - Nhấn nút "Bắt Đầu Kéo Bài Viết".
+     - Phần mềm sẽ tự động cào lần lượt các bài từ trên xuống dưới và lưu thành các file .txt.
+
+4. ĐỊNH DẠNG FILE XUẤT RA (.TXT):
+   Tiêu đề : 涿州古城一日游记
+   Tác giả : 环球旅行家
+   Level : 7
+   Ngày đăng : 2024-05-20 14:30:00
+   View : 12540浏览
+   Follow : 350收藏
+   Share : 88分享
+   Thời gian khởi hành : 出发时间/2024-05-18
+   Thời gian chuyến đi: 出行天数/1天
+   Người : 人物/独自一人
+   Chi phí/ Người: 200RMB
+   Mục lục :
+   1. 05/ 【城市历史】
+   2. 06/ 【行程】
+   3. 07/ —涿州博物馆
+   ...
+   Nội Dung:
+   <Nội dung bài viết đầy đủ không chứa ảnh rác>
+
+5. LƯU Ý KHI CHẠY:
+   - Máy tính cần có kết nối Internet ổn định.
+   - Khi chạy lần đầu, nếu Windows Defender hiện thông báo "Windows protected your PC",
+     hãy nhấn "More info" -> "Run anyway" để khởi chạy.
+================================================================================
