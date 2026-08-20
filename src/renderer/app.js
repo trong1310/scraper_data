@@ -15,6 +15,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   const btnSelectFolder = document.getElementById('btnSelectFolder');
   const btnStart = document.getElementById('btnStart');
+  const btnCollectUrls = document.getElementById('btnCollectUrls');
   const btnPause = document.getElementById('btnPause');
   const btnPauseText = document.getElementById('btnPauseText');
   const btnStop = document.getElementById('btnStop');
@@ -270,7 +271,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const startUrl = inputStartUrl.value.trim() || 'https://www.mafengwo.cn/';
     const keyword = inputKeyword ? inputKeyword.value.trim() : '';
     const baseDir = inputBaseDir.value.trim();
-    const delayMs = parseInt(inputDelay.value, 10) || 2000;
+    const delayMs = parseInt(inputDelay.value, 10) || 10000;
     const browserType = selectBrowser ? selectBrowser.value : 'chrome';
     const showBrowser = checkShowBrowser.checked;
 
@@ -294,6 +295,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // UI state
     btnStart.disabled = true;
+    if (btnCollectUrls) btnCollectUrls.disabled = true;
     btnPause.disabled = false;
     btnStop.disabled = false;
     isPausedState = false;
@@ -323,10 +325,73 @@ document.addEventListener('DOMContentLoaded', async () => {
         type: 'error'
       });
       btnStart.disabled = false;
+      if (btnCollectUrls) btnCollectUrls.disabled = false;
       btnPause.disabled = true;
       btnStop.disabled = true;
     }
   });
+
+  // 10b. Collect URLs only (no detail scrape)
+  if (btnCollectUrls) {
+    btnCollectUrls.addEventListener('click', async () => {
+      const startUrl = inputStartUrl.value.trim() || 'https://www.mafengwo.cn/';
+      const keyword = inputKeyword ? inputKeyword.value.trim() : '';
+      const baseDir = inputBaseDir.value.trim();
+      const browserType = selectBrowser ? selectBrowser.value : 'chrome';
+      const showBrowser = checkShowBrowser.checked;
+
+      postsTableBody.innerHTML = `
+        <tr class="empty-row">
+          <td colspan="5">
+            <div class="empty-state">
+              <p>Đang thu thập URL bài viết vào data/urls.xlsx...</p>
+            </div>
+          </td>
+        </tr>
+      `;
+      scrapedPostsList = [];
+      tabCount.textContent = '0';
+      statCount.textContent = `0 URL mới`;
+      statPercent.textContent = '—';
+      statPage.textContent = 'Trang 1';
+      progressBarFill.style.width = '0%';
+      outputQuickBox.style.display = 'none';
+
+      btnStart.disabled = true;
+      btnCollectUrls.disabled = true;
+      btnPause.disabled = false;
+      btnStop.disabled = false;
+      isPausedState = false;
+      btnPauseText.textContent = 'Tạm Dừng';
+
+      const sourceDesc = keyword ? `theo từ khóa "${keyword}"` : `từ ${startUrl}`;
+      appendLog({
+        timestamp: new Date().toLocaleTimeString('vi-VN'),
+        message: `Bắt đầu chỉ lấy URL ${sourceDesc} → lưu vào data/urls.xlsx (đến khi hết trang)...`,
+        type: 'info'
+      });
+
+      try {
+        await window.api.collectUrls({
+          startUrl,
+          keyword,
+          outputBaseDir: baseDir,
+          browserType,
+          showBrowser
+        });
+      } catch (err) {
+        appendLog({
+          timestamp: new Date().toLocaleTimeString('vi-VN'),
+          message: `Lỗi khởi động lấy URL: ${err.message}`,
+          type: 'error'
+        });
+        btnStart.disabled = false;
+        btnCollectUrls.disabled = false;
+        btnPause.disabled = true;
+        btnStop.disabled = true;
+      }
+    });
+  }
 
   // 11. Pause / Resume / Stop
   btnPause.addEventListener('click', async () => {
@@ -359,9 +424,14 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.api.onCrawlerProgress((progressData) => {
-    statCount.textContent = `${progressData.current} / ${progressData.target} bài`;
-    statPercent.textContent = `${progressData.percent}%`;
-    progressBarFill.style.width = `${progressData.percent}%`;
+    if (progressData.percent !== undefined && progressData.percent > 0) {
+      statCount.textContent = `${progressData.current} / ${progressData.target} bài`;
+      statPercent.textContent = `${progressData.percent}%`;
+      progressBarFill.style.width = `${progressData.percent}%`;
+    } else {
+      statCount.textContent = `${progressData.current || 0} URL mới`;
+      statPercent.textContent = progressData.target ? `File: ${progressData.target}` : '—';
+    }
     if (progressData.currentPage) {
       statPage.textContent = `Trang ${progressData.currentPage}`;
     }
@@ -374,20 +444,45 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   window.api.onStatusChange((status) => {
-    if (status === 'completed' || status === 'stopped' || status === 'error') {
+    if (status === 'paused') {
+      isPausedState = true;
+      btnPause.disabled = false;
+      btnStop.disabled = false;
+      btnPauseText.textContent = 'Tiếp Tục';
+    } else if (status === 'running') {
+      isPausedState = false;
+      btnPause.disabled = false;
+      btnStop.disabled = false;
+      btnPauseText.textContent = 'Tạm Dừng';
+    } else if (status === 'completed' || status === 'stopped' || status === 'error') {
       btnStart.disabled = false;
+      if (btnCollectUrls) btnCollectUrls.disabled = false;
       btnPause.disabled = true;
       btnStop.disabled = true;
       btnPauseText.textContent = 'Tạm Dừng';
+      isPausedState = false;
     }
   });
 
   window.api.onCrawlerCompleted((result) => {
     btnStart.disabled = false;
+    if (btnCollectUrls) btnCollectUrls.disabled = false;
     btnPause.disabled = true;
     btnStop.disabled = true;
 
-    if (result && result.outputFolder) {
+    if (result && result.mode === 'collectUrls') {
+      const pathShow = result.urlsExcelPath || result.outputFolder;
+      if (pathShow) {
+        currentOutputFolder = result.outputFolder || pathShow;
+        currentOutputFolderPath.textContent = pathShow;
+        outputQuickBox.style.display = 'flex';
+      }
+      appendLog({
+        timestamp: new Date().toLocaleTimeString('vi-VN'),
+        message: `Hoàn tất lấy URL: +${result.totalCollected || 0} mới (tổng file ~${result.totalInFile || 0}).`,
+        type: 'success'
+      });
+    } else if (result && result.outputFolder) {
       currentOutputFolder = result.outputFolder;
       currentOutputFolderPath.textContent = result.outputFolder;
       outputQuickBox.style.display = 'flex';

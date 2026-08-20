@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('api', {
 
   // Crawler Controls
   startCrawl: (config) => ipcRenderer.invoke('crawler-start', config),
+  collectUrls: (config) => ipcRenderer.invoke('crawler-collect-urls', config),
   pauseCrawl: () => ipcRenderer.invoke('crawler-pause'),
   resumeCrawl: () => ipcRenderer.invoke('crawler-resume'),
   stopCrawl: () => ipcRenderer.invoke('crawler-stop'),

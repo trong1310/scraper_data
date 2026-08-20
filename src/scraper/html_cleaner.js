@@ -340,6 +340,7 @@ function cleanArticleHtml(html, meta = {}) {
   // 12. Format final text strictly matching requested template
   const headerLines = [
     `Tiêu đề : ${title}`,
+    `Đường dẫn : ${meta.url || ''}`,
     `Tác giả : ${author}`,
     `Level : ${level}`,
     `Ngày đăng : ${date}`,

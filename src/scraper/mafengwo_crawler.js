@@ -7,6 +7,8 @@ const path = require('path');
 const { cleanArticleHtml, sanitizeFilename } = require('./html_cleaner');
 const { solveTencentCaptcha } = require('./captcha_solver');
 const { getDataDir, getAppBaseDir, logError } = require('../utils/error_logger');
+const { getUrlExcelPath, getExistingUrls, appendUrlIfNotExists, URL_EXCEL_FILENAME, getCollectedUrlsExcelPath, appendUrlsBatch, COLLECTED_URLS_FILENAME } = require('../excel/excel_manager');
+const Tesseract = require('tesseract.js');
 
 /**
  * Normalizes Vietnamese/English destination terms to standard Chinese keywords
@@ -328,10 +330,18 @@ class MafengwoCrawler {
     }
   }
 
+  async pauseAndWait(reason) {
+    if (reason) {
+      this.log(reason, 'warn');
+    }
+    this.pause();
+    await this.checkPauseOrStop();
+  }
+
   pause() {
     this.isPaused = true;
     this.onStatusChange('paused');
-    this.log('Đã tạm dừng quá trình cào.', 'warn');
+    this.log('Đã tạm dừng quá trình cào. Nhấn "Tiếp Tục" khi đã xử lý xong.', 'warn');
   }
 
   resume() {
@@ -389,6 +399,7 @@ class MafengwoCrawler {
         }
       }
     } catch (e) {
+      if (e.message === 'CRAWL_STOPPED_BY_USER') throw e;
       // Ignore background check errors
     }
   }
@@ -513,10 +524,30 @@ class MafengwoCrawler {
 
       await this.performLoginFlow(this.page);
 
+      // Wait and check if we're still on login page
+      await this.sleep(2000);
+      const stillOnLogin = await this.page.evaluate(() => {
+        return window.location.href.includes('passport.mafengwo.cn');
+      }).catch(() => false);
+
+      if (stillOnLogin) {
+        this.log('Vẫn đang ở trang đăng nhập — đăng nhập có thể chưa thành công.', 'warn');
+        this.log('====================================================', 'info');
+        return false;
+      }
+
       try {
         await this.page.goto('https://www.mafengwo.cn/', { waitUntil: 'domcontentloaded', timeout: 25000 });
         await this.sleep(2500);
       } catch (e) { }
+
+      // Verify login on homepage
+      const verifiedLogin = await this.page.evaluate(() => {
+        const userHeader = document.querySelector('.user_info, .head-user, .user_name, a[href*="/u/"], a[href*="/home/"]');
+        if (userHeader) return true;
+        if (document.cookie.includes('mfw_uid=') || document.cookie.includes('oav2_token=')) return true;
+        return false;
+      }).catch(() => false);
 
       let cookies = [];
       try {
@@ -530,10 +561,13 @@ class MafengwoCrawler {
         }
       }
 
-      const loggedIn = this.authManager ? this.authManager.isLoggedIn(cookies) : cookies.length > 5;
-      this.log(`-> ${loggedIn ? 'ĐĂNG NHẬP THÀNH CÔNG' : 'ĐÃ LƯU SESSION'}! Đã lưu ${cookies.length} cookies xác thực.`, 'success');
+      if (verifiedLogin) {
+        this.log(`-> ĐĂNG NHẬP THÀNH CÔNG! Đã lưu ${cookies.length} cookies xác thực.`, 'success');
+      } else {
+        this.log(`-> ĐĂNG NHẬP CHƯA XÁC NHẬN ĐƯỢC. Đã lưu ${cookies.length} cookies.`, 'warn');
+      }
       this.log('====================================================', 'info');
-      return loggedIn;
+      return verifiedLogin;
 
     } catch (err) {
       this.log(`Lỗi khi đăng nhập trước khi cào: ${err.message}`, 'warn');
@@ -590,19 +624,19 @@ class MafengwoCrawler {
       await this.page.type('input._j_gs_input', keyword, { delay: 60 });
       await this.sleep(1500);
 
-      // 3. Select the best suggestion item using real page.click
-      await this.page.waitForSelector('._j_sr_container li._j_selectedli_item', { timeout: 6000 }).catch(() => { });
+      // 3. Always click the first suggestion item
+      await this.page.waitForSelector('._j_sr_container li, .tn-search-suggest li', { timeout: 6000 }).catch(() => { });
 
       const suggestionText = await this.page.evaluate(() => {
-        const it = document.querySelector('._j_sr_container li._j_selectedli_item, .tn-search-suggest li');
+        const it = document.querySelector('._j_sr_container li, .tn-search-suggest li');
         return it ? it.innerText.trim().replace(/\s+/g, ' ') : '';
       });
 
       try {
-        await this.page.click('._j_sr_container li._j_selectedli_item');
+        await this.page.click('._j_sr_container li, .tn-search-suggest li');
       } catch (e) {
         await this.page.evaluate(() => {
-          const it = document.querySelector('._j_sr_container li');
+          const it = document.querySelector('._j_sr_container li, .tn-search-suggest li');
           if (it) {
             it.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
             it.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -747,21 +781,31 @@ class MafengwoCrawler {
    */
   async goToNextListPage(targetPage, isKeywordMode = false, startUrl = '') {
     if (isKeywordMode) {
-      this.log(`Chuyển danh sách lọc sang Trang ${targetPage}...`, 'info');
-      const clicked = await this.page.evaluate((p) => {
-        const pageBtn = document.querySelector(`a._j_pageitem[data-page="${p}"], #_j_tn_pagination a[data-page="${p}"], .m-pagination a[data-page="${p}"]`);
-        if (pageBtn) {
-          pageBtn.click();
-          return true;
-        }
-        const nextBtn = document.querySelector('.pg-next, #_j_tn_pagination .pg-next, a[title="下一页"]');
-        if (nextBtn) {
+      this.log(`Chuyển danh sách lọc sang trang tiếp theo (下一页)...`, 'info');
+      const clicked = await this.page.evaluate(() => {
+        const nextBtn = document.querySelector(
+          '.pg-next, #_j_tn_pagination .pg-next, a[title="下一页"], a.pg-next'
+        );
+        if (nextBtn && !nextBtn.classList.contains('disabled') && !nextBtn.getAttribute('disabled')) {
           nextBtn.click();
           return true;
         }
+        // Fallback: find by visible text 下一页
+        const candidates = document.querySelectorAll('a, span, button, li');
+        for (const el of candidates) {
+          const txt = (el.innerText || '').trim();
+          if (txt === '下一页' || txt.includes('下一页')) {
+            const clickable = el.closest('a') || el;
+            clickable.click();
+            return true;
+          }
+        }
         return false;
-      }, targetPage);
+      });
 
+      if (!clicked) {
+        this.log('Không tìm thấy nút 下一页 để chuyển trang.', 'warn');
+      }
       await this.sleep(3000);
       return clicked;
     } else {
@@ -797,7 +841,7 @@ class MafengwoCrawler {
     }
 
     const outputBaseDir = config.outputBaseDir || '';
-    const delayMs = parseInt(config.delayMs, 10) || 2000;
+    const delayMs = parseInt(config.delayMs, 10) || 10000;
     const cookies = config.cookies || [];
     const showBrowser = !!config.showBrowser;
 
@@ -813,6 +857,17 @@ class MafengwoCrawler {
     const outputFolder = this.createTimestampFolder(outputBaseDir, keyword);
     this.log(`Tạo thư mục lưu bài viết: ${outputFolder}`, 'success');
 
+    // URL de-dup Excel: create if missing and preload existing URLs
+    const normalizeUrl = (raw) => {
+      const u = String(raw || '').trim();
+      if (!u) return '';
+      return u.replace(/#.*$/, '').replace(/\/+$/, '');
+    };
+    const urlExcelPath = getUrlExcelPath(outputBaseDir);
+    const existingExcelUrls = await getExistingUrls(urlExcelPath);
+    const normalizedExcelUrls = new Set(Array.from(existingExcelUrls).map(normalizeUrl).filter(Boolean));
+    this.log(`File đối chiếu URL: ${URL_EXCEL_FILENAME} (đã có ${normalizedExcelUrls.size} URL).`, 'info');
+
     if (isKeywordMode) {
       this.log(`Mục tiêu cần kéo: ${targetCount} bài viết theo từ khóa: "${keyword}".`);
     } else {
@@ -827,8 +882,18 @@ class MafengwoCrawler {
       this.preferredBrowser = config.browserType || this.preferredBrowser || 'chrome';
       await this.initBrowser(!showBrowser, cookies, this.preferredBrowser);
 
-      // 3. Ensure Login is completed BEFORE crawling
-      await this.ensureLoggedIn();
+      // 3. Ensure Login is completed BEFORE crawling — retry up to 3 times
+      let loginSuccess = false;
+      for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
+        loginSuccess = await this.ensureLoggedIn();
+        if (loginSuccess) break;
+        this.log(`Đăng nhập chưa thành công, thử lại lần ${loginAttempt + 1}/3...`, 'warn');
+        await this.sleep(3000);
+      }
+
+      if (!loginSuccess) {
+        this.log('CẢNH BÁO: Chưa xác nhận được đăng nhập thành công. Vẫn tiếp tục thử cào...', 'warn');
+      }
 
       this.log('[BƯỚC 2/2] BẮT ĐẦU TIẾN TRÌNH KÉO BÀI VIẾT TỪ MAFENGWO...', 'info');
 
@@ -840,12 +905,17 @@ class MafengwoCrawler {
       let currentPage = 1;
       let consecutiveEmptyPages = 0;
 
-      // Create dedicated detail page worker for efficient note extraction
-      detailPage = await this.browser.newPage();
-      await detailPage.setViewport({ width: 1366, height: 850 });
-      await detailPage.setUserAgent(
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
-      );
+      const createDetailPageWorker = async () => {
+        const p = await this.browser.newPage();
+        await p.setViewport({ width: 1366, height: 850 });
+        await p.setUserAgent(
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36'
+        );
+        return p;
+      };
+
+      // Detail tab is created per article after returning to list tab
+      detailPage = null;
 
       while (this.scrapedPosts.length < targetCount && !this.shouldStop && consecutiveEmptyPages < 4) {
         await this.checkPauseOrStop();
@@ -875,7 +945,20 @@ class MafengwoCrawler {
 
         this.log(`Tìm thấy ${articleLinks.length} bài viết hợp lệ trên Trang ${currentPage}.`);
 
-        const unvisitedLinks = articleLinks.filter(item => !this.visitedUrls.has(item.href));
+        // Log current page URL to help diagnose redirect issues
+        const currentPageUrl = await this.page.url();
+        if (currentPageUrl.includes('passport.mafengwo.cn')) {
+          this.log(`Trang hiện tại bị redirect về đăng nhập: ${currentPageUrl}. Thử đăng nhập lại...`, 'warn');
+          await this.handleLoginOrCaptchaIfPresent();
+          await this.sleep(2000);
+          continue;
+        }
+        const unvisitedLinks = articleLinks.filter(item => {
+          const normalized = normalizeUrl(item.href);
+          if (!normalized) return false;
+          return !normalizedExcelUrls.has(normalized);
+        });
+        this.log(`Trong đó ${unvisitedLinks.length} bài chưa cào (bỏ qua ${articleLinks.length - unvisitedLinks.length} bài đã có trong ${URL_EXCEL_FILENAME}).`);
 
         if (unvisitedLinks.length === 0) {
           consecutiveEmptyPages++;
@@ -897,12 +980,17 @@ class MafengwoCrawler {
           }
 
           await this.checkPauseOrStop();
-          this.visitedUrls.add(item.href);
+          const normalizedItemUrl = normalizeUrl(item.href);
 
           const postIndex = this.scrapedPosts.length + 1;
           this.log(`[${postIndex}/${targetCount}] Đang cào bài: ${item.title || item.href}`);
 
           try {
+            // Open a fresh detail tab only when starting a new article
+            if (!detailPage || detailPage.isClosed()) {
+              detailPage = await createDetailPageWorker();
+            }
+
             // Use detailPage worker to scrape
             await this.safeGoto(item.href, { timeout: 40000 }, detailPage);
             await this.sleep(1500);
@@ -1014,9 +1102,11 @@ class MafengwoCrawler {
               toc: liveToc
             });
 
-            // Prevent writing login page or noise pages
+            // Too short / login page → pause for manual check (no auto-skip silently)
             if (cleaned.title.includes('账号登录') || cleaned.title.includes('登录') || cleaned.wordCount < 100) {
-              this.log(`Cảnh báo: Bỏ qua trang đăng nhập hoặc trang quá ngắn (${cleaned.wordCount} ký tự): ${item.href}`, 'warn');
+              await this.pauseAndWait(
+                `Nội dung quá ngắn hoặc trang đăng nhập (${cleaned.wordCount} ký tự): ${item.href}. Đã tạm dừng — kiểm tra trình duyệt rồi nhấn "Tiếp Tục".`
+              );
               continue;
             }
 
@@ -1037,6 +1127,15 @@ class MafengwoCrawler {
             };
 
             this.scrapedPosts.push(postData);
+            try {
+              const saved = await appendUrlIfNotExists(urlExcelPath, normalizedItemUrl);
+              normalizedExcelUrls.add(normalizedItemUrl);
+              if (saved) {
+                this.log(`Đã ghi URL vào ${URL_EXCEL_FILENAME}`, 'info');
+              }
+            } catch (excelErr) {
+              this.log(`Lỗi ghi URL vào Excel (${urlExcelPath}): ${excelErr.message}`, 'error');
+            }
             this.onPostScraped(postData);
             this.onProgress({
               current: this.scrapedPosts.length,
@@ -1049,10 +1148,24 @@ class MafengwoCrawler {
 
           } catch (err) {
             this.log(`Lỗi khi cào bài [${item.href}]: ${err.message}`, 'error');
+          } finally {
+            // Close detail tab, return to list tab, then next article will open a new tab
+            try {
+              if (detailPage && !detailPage.isClosed()) {
+                await detailPage.close();
+              }
+            } catch (e) { }
+            detailPage = null;
+
+            try {
+              if (this.page && !this.page.isClosed()) {
+                await this.page.bringToFront();
+              }
+            } catch (e) { }
           }
 
-          // Polite delay between articles
-          const jitter = Math.floor(Math.random() * 600);
+          // Delay between articles (default 10000ms) + random jitter 500–3000ms
+          const jitter = 500 + Math.floor(Math.random() * 2501);
           await this.sleep(delayMs + jitter);
         }
 
@@ -1095,6 +1208,201 @@ class MafengwoCrawler {
       if (detailPage && !detailPage.isClosed()) {
         try { await detailPage.close(); } catch (e) { }
       }
+      if (this.browser) {
+        try {
+          await this.browser.close();
+        } catch (e) { }
+        this.browser = null;
+      }
+    }
+  }
+
+  /**
+   * Collect article URLs from list pages only (no detail scrape).
+   * Saves to data/urls.xlsx until no more pages / no new links.
+   */
+  async startCollectUrls(config = {}) {
+    const keyword = (config.keyword || '').trim();
+    const isKeywordMode = !!keyword;
+    let startUrl = (config.startUrl || 'https://www.mafengwo.cn/').trim();
+    if (startUrl.includes('/youji/')) {
+      startUrl = 'https://www.mafengwo.cn/yj/10183/';
+    }
+
+    const outputBaseDir = config.outputBaseDir || '';
+    const cookies = config.cookies || [];
+    const showBrowser = !!config.showBrowser;
+
+    const normalizeUrl = (raw) => {
+      const u = String(raw || '').trim();
+      if (!u) return '';
+      return u.replace(/#.*$/, '').replace(/\/+$/, '');
+    };
+
+    this.isRunning = true;
+    this.isPaused = false;
+    this.shouldStop = false;
+    this.scrapedPosts = [];
+    this.visitedUrls = new Set();
+    this.savedCookies = cookies;
+    this.onStatusChange('running');
+
+    const urlsExcelPath = getCollectedUrlsExcelPath(outputBaseDir);
+    const existingUrls = await getExistingUrls(urlsExcelPath);
+    const knownUrls = new Set(Array.from(existingUrls).map(normalizeUrl).filter(Boolean));
+    this.log(`Chế độ chỉ lấy URL → file: ${COLLECTED_URLS_FILENAME} (đã có ${knownUrls.size} URL).`, 'info');
+
+    if (isKeywordMode) {
+      this.log(`Thu thập URL theo từ khóa: "${keyword}" đến khi hết trang.`, 'info');
+    } else {
+      this.log(`Thu thập URL từ ${startUrl} đến khi hết trang.`, 'info');
+    }
+
+    let collectedThisRun = 0;
+
+    try {
+      this.showBrowser = showBrowser;
+      this.preferredBrowser = config.browserType || this.preferredBrowser || 'chrome';
+      await this.initBrowser(!showBrowser, cookies, this.preferredBrowser);
+
+      let loginSuccess = false;
+      for (let loginAttempt = 1; loginAttempt <= 3; loginAttempt++) {
+        loginSuccess = await this.ensureLoggedIn();
+        if (loginSuccess) break;
+        this.log(`Đăng nhập chưa thành công, thử lại lần ${loginAttempt + 1}/3...`, 'warn');
+        await this.sleep(3000);
+      }
+
+      if (!loginSuccess) {
+        this.log('CẢNH BÁO: Chưa xác nhận được đăng nhập. Vẫn tiếp tục lấy URL...', 'warn');
+      }
+
+      if (isKeywordMode) {
+        await this.applyDestinationFilter(keyword);
+      } else if (startUrl && !startUrl.includes('passport.mafengwo.cn')) {
+        await this.safeGoto(startUrl, { timeout: 45000 });
+        await this.handleLoginOrCaptchaIfPresent(startUrl);
+      }
+
+      let currentPage = 1;
+
+      while (!this.shouldStop) {
+        await this.checkPauseOrStop();
+
+        if (!isKeywordMode && currentPage > 1) {
+          await this.goToNextListPage(currentPage, false, startUrl);
+        }
+
+        try {
+          await this.page.evaluate(async () => {
+            window.scrollBy(0, 1000);
+            await new Promise(r => setTimeout(r, 600));
+            window.scrollBy(0, 1500);
+            await new Promise(r => setTimeout(r, 600));
+          });
+        } catch (e) { }
+
+        let articleLinks = [];
+        try {
+          articleLinks = await this.extractArticleLinksFromPage(isKeywordMode);
+        } catch (e) {
+          this.log(`Lỗi trích xuất link trang ${currentPage}: ${e.message}`, 'warn');
+          articleLinks = [];
+        }
+
+        this.log(`Trang ${currentPage}: tìm thấy ${articleLinks.length} link bài.`, 'info');
+
+        const currentPageUrl = await this.page.url();
+        if (currentPageUrl.includes('passport.mafengwo.cn')) {
+          this.log(`Bị redirect đăng nhập: ${currentPageUrl}`, 'warn');
+          await this.handleLoginOrCaptchaIfPresent();
+          await this.sleep(2000);
+          continue;
+        }
+
+        const newUrls = [];
+        for (const item of articleLinks) {
+          const normalized = normalizeUrl(item.href);
+          if (!normalized) continue;
+          if (knownUrls.has(normalized)) continue;
+          newUrls.push(normalized);
+        }
+
+        this.log(
+          `Trang ${currentPage}: ${newUrls.length} URL mới (bỏ qua ${articleLinks.length - newUrls.length} trùng trong ${COLLECTED_URLS_FILENAME}).`,
+          'info'
+        );
+
+        if (newUrls.length === 0) {
+          this.log(`Không có URL mới trên trang ${currentPage} — tiếp tục sang trang sau...`, 'warn');
+        } else {
+          try {
+            const result = await appendUrlsBatch(urlsExcelPath, newUrls);
+            newUrls.forEach(u => knownUrls.add(u));
+            collectedThisRun += result.added;
+            this.log(
+              `Đã ghi ${result.added} URL vào ${COLLECTED_URLS_FILENAME} (tổng file: ${result.total}).`,
+              'success'
+            );
+            this.onProgress({
+              current: collectedThisRun,
+              target: knownUrls.size,
+              percent: 0,
+              currentPage
+            });
+          } catch (excelErr) {
+            this.log(`Lỗi ghi ${COLLECTED_URLS_FILENAME}: ${excelErr.message}`, 'error');
+          }
+        }
+
+        // Advance to next list page
+        currentPage++;
+        let moved = false;
+        if (isKeywordMode) {
+          moved = await this.goToNextListPage(currentPage, true);
+          if (!moved) {
+            this.log('Không còn nút 下一页 — kết thúc thu thập URL.', 'warn');
+            break;
+          }
+        } else {
+          await this.goToNextListPage(currentPage, false, startUrl);
+          moved = true;
+        }
+        await this.sleep(1500);
+      }
+
+      this.log(
+        `=== HOÀN TẤT LẤY URL: +${collectedThisRun} mới | tổng trong file ~${knownUrls.size} | ${urlsExcelPath} ===`,
+        'success'
+      );
+      this.onStatusChange('completed');
+
+      return {
+        success: true,
+        mode: 'collectUrls',
+        totalCollected: collectedThisRun,
+        totalInFile: knownUrls.size,
+        outputFolder: path.dirname(urlsExcelPath),
+        urlsExcelPath
+      };
+    } catch (err) {
+      if (err.message === 'CRAWL_STOPPED_BY_USER') {
+        this.log('Đã dừng thu thập URL theo yêu cầu người dùng.', 'warn');
+        this.onStatusChange('stopped');
+        return {
+          success: false,
+          mode: 'collectUrls',
+          totalCollected: collectedThisRun,
+          totalInFile: knownUrls.size,
+          outputFolder: path.dirname(urlsExcelPath),
+          urlsExcelPath
+        };
+      }
+      this.log(`Lỗi thu thập URL: ${err.message}`, 'error');
+      this.onStatusChange('error');
+      throw err;
+    } finally {
+      this.isRunning = false;
       if (this.browser) {
         try {
           await this.browser.close();

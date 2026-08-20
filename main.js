@@ -178,6 +178,72 @@ ipcMain.handle('crawler-start', async (event, config) => {
   return { success: true };
 });
 
+ipcMain.handle('crawler-collect-urls', async (event, config) => {
+  if (activeCrawler && activeCrawler.isRunning) {
+    return { success: false, error: 'Crawler is already running!' };
+  }
+
+  const cookies = await authManager.getSavedCookies();
+  const userDataDir = path.join(app.getPath('userData'), 'browser_profile');
+
+  activeCrawler = new MafengwoCrawler({
+    userDataDir,
+    browserType: config?.browserType || 'chrome',
+    authManager,
+    credentials: authManager.getCredentials(),
+    onLog: (logData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-log', logData);
+      }
+    },
+    onProgress: (progressData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-progress', progressData);
+      }
+    },
+    onPostScraped: (postData) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-post-scraped', postData);
+      }
+    },
+    onStatusChange: (status) => {
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-status-change', status);
+      }
+    }
+  });
+
+  (async () => {
+    try {
+      const result = await activeCrawler.startCollectUrls({
+        ...config,
+        cookies
+      });
+
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-completed', result);
+      }
+
+      if (result && result.urlsExcelPath && fs.existsSync(result.urlsExcelPath)) {
+        shell.openPath(result.urlsExcelPath);
+      } else if (result && result.outputFolder && fs.existsSync(result.outputFolder)) {
+        shell.openPath(result.outputFolder);
+      }
+    } catch (err) {
+      logError(err, 'Tiến trình lấy URL (crawler-collect-urls)');
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('crawler-log', {
+          timestamp: new Date().toLocaleTimeString('vi-VN'),
+          message: `Lỗi: ${err.message}`,
+          type: 'error'
+        });
+      }
+    }
+  })();
+
+  return { success: true };
+});
+
 ipcMain.handle('crawler-pause', async () => {
   if (activeCrawler) {
     activeCrawler.pause();
