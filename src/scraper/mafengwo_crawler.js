@@ -110,6 +110,7 @@ class MafengwoCrawler {
     this.scrapedPosts = [];
     this.visitedUrls = new Set();
     this.currentOutputFolder = null;
+    this.consecutiveCaptchaTriggers = 0;
   }
 
   findDefaultBrowser(preferred = 'chrome') {
@@ -387,16 +388,35 @@ class MafengwoCrawler {
       }).catch(() => false);
 
       if (hasCaptcha) {
-        this.log('[Bảo vệ WAF] Phát hiện thử thách bảo mật Tencent Captcha, tự động giải...', 'warn');
-        await solveTencentCaptcha(pageInstance, {
+        this.consecutiveCaptchaTriggers++;
+        this.log(`[Bảo vệ WAF] Phát hiện thử thách bảo mật Tencent Captcha (Lần liên tiếp: ${this.consecutiveCaptchaTriggers})...`, 'warn');
+        const solved = await solveTencentCaptcha(pageInstance, {
           onLog: (m, t) => this.log(m, t),
-          maxRetries: 5
+          maxRetries: 8
         });
         await this.sleep(1500);
-        const cookies = await pageInstance.cookies();
-        if (this.authManager) {
-          await this.authManager.saveCookies(cookies);
+
+        // If dính Captcha 2+ lần liên tiếp (hoặc giải thất bại), Session Cookie bị cờ đen -> Tự động xóa Cookie nghi vấn & Đăng nhập lại
+        if (this.consecutiveCaptchaTriggers >= 2 || !solved) {
+          this.log('[CỜ ĐEN WAF] Session bị dính Captcha liên tục! Tiến hành reset Cookie và đăng nhập lại...', 'warn');
+          try {
+            const client = await pageInstance.target().createCDPSession();
+            await client.send('Network.clearBrowserCookies');
+          } catch (e) { }
+          if (this.authManager) {
+            await this.authManager.clearCookies();
+          }
+          await this.performLoginFlow(pageInstance);
+          this.consecutiveCaptchaTriggers = 0;
+        } else {
+          const cookies = await pageInstance.cookies();
+          if (this.authManager) {
+            await this.authManager.saveCookies(cookies);
+          }
         }
+      } else {
+        // Reset counter when page has no captcha
+        this.consecutiveCaptchaTriggers = 0;
       }
     } catch (e) {
       if (e.message === 'CRAWL_STOPPED_BY_USER') throw e;
@@ -980,13 +1000,24 @@ class MafengwoCrawler {
           }
 
           await this.checkPauseOrStop();
-          const normalizedItemUrl = normalizeUrl(item.href);
 
+          // 1. Cool-down Break: After every 12 scraped posts, sleep 45–75 seconds to avoid WAF rate-limit
+          if (this.scrapedPosts.length > 0 && this.scrapedPosts.length % 12 === 0) {
+            const cooldownSec = 45 + Math.floor(Math.random() * 31);
+            this.log(`[HẠ NHIỆT WAF] Đã cào ${this.scrapedPosts.length} bài. Nghỉ ngơi ${cooldownSec} giây để hạ nhiệt session/IP...`, 'warn');
+            for (let s = cooldownSec; s > 0; s--) {
+              if (this.shouldStop) break;
+              if (s % 15 === 0) this.log(`[HẠ NHIỆT WAF] Còn ${s} giây nghỉ ngơi...`, 'info');
+              await this.sleep(1000);
+            }
+          }
+
+          const normalizedItemUrl = normalizeUrl(item.href);
           const postIndex = this.scrapedPosts.length + 1;
           this.log(`[${postIndex}/${targetCount}] Đang cào bài: ${item.title || item.href}`);
 
           try {
-            // Open a fresh detail tab only when starting a new article
+            // 2. Reuse a Single Worker Tab instead of opening & closing a tab per article
             if (!detailPage || detailPage.isClosed()) {
               detailPage = await createDetailPageWorker();
             }
@@ -1008,18 +1039,24 @@ class MafengwoCrawler {
               });
             }).catch(() => { });
 
+            // 3. Human-like mouse jitter before scrolling
+            try {
+              const randomX = 150 + Math.floor(Math.random() * 500);
+              const randomY = 200 + Math.floor(Math.random() * 300);
+              await detailPage.mouse.move(randomX, randomY, { steps: 5 });
+            } catch (e) { }
+
             this.log(`Đang lướt chậm từng đoạn để kích hoạt mục lục (${item.title || 'Mafengwo'})...`, 'info');
 
-            // Smooth, slow scrolling to trigger all lazy-loaded chapters and catalogue markers
+            // 3. Human-like realistic scrolling with random jitter and variable intervals
             await detailPage.evaluate(async () => {
               await new Promise((resolve) => {
                 let currentPos = 0;
-                const distance = 280;
-                const intervalTime = 250;
                 let totalHeight = document.body.scrollHeight;
                 let bottomCount = 0;
 
-                const timer = setInterval(() => {
+                const scrollStep = () => {
+                  const distance = 200 + Math.floor(Math.random() * 180);
                   window.scrollBy(0, distance);
                   currentPos += distance;
 
@@ -1036,13 +1073,19 @@ class MafengwoCrawler {
                     }
 
                     if (bottomCount >= 3 || currentPos > 150000) {
-                      clearInterval(timer);
                       resolve();
+                      return;
                     }
                   } else {
                     totalHeight = newHeight;
                   }
-                }, intervalTime);
+
+                  // Randomized interval time between 180ms and 450ms
+                  const randomDelay = 180 + Math.floor(Math.random() * 270);
+                  setTimeout(scrollStep, randomDelay);
+                };
+
+                scrollStep();
               });
             }).catch(() => { });
 
@@ -1149,14 +1192,7 @@ class MafengwoCrawler {
           } catch (err) {
             this.log(`Lỗi khi cào bài [${item.href}]: ${err.message}`, 'error');
           } finally {
-            // Close detail tab, return to list tab, then next article will open a new tab
-            try {
-              if (detailPage && !detailPage.isClosed()) {
-                await detailPage.close();
-              }
-            } catch (e) { }
-            detailPage = null;
-
+            // Keep detailPage open for reuse (do not close tab!)
             try {
               if (this.page && !this.page.isClosed()) {
                 await this.page.bringToFront();
@@ -1164,9 +1200,12 @@ class MafengwoCrawler {
             } catch (e) { }
           }
 
-          // Delay between articles (default 10000ms) + random jitter 500–3000ms
-          const jitter = 500 + Math.floor(Math.random() * 2501);
-          await this.sleep(delayMs + jitter);
+          // 4. Delay between articles (default 8000–15000ms randomized)
+          const baseDelay = Math.max(delayMs, 8000);
+          const jitter = Math.floor(Math.random() * 5500);
+          const finalDelay = baseDelay + jitter;
+          this.log(`Nghỉ ${Math.round(finalDelay / 1000)}s trước khi cào bài tiếp...`, 'info');
+          await this.sleep(finalDelay);
         }
 
         // Advance to next page if quota not reached
