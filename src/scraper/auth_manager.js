@@ -4,7 +4,7 @@ const { BrowserWindow } = require('electron');
 const puppeteer = require('puppeteer-extra');
 const StealthPlugin = require('puppeteer-extra-plugin-stealth');
 puppeteer.use(StealthPlugin());
-const { solveTencentCaptcha } = require('./captcha_solver');
+const { solveTencentCaptcha, solveImageCaptcha, solveAllCaptchas } = require('./captcha_solver');
 const { logError } = require('../utils/error_logger');
 
 const DEFAULT_CREDENTIALS = {
@@ -205,11 +205,14 @@ class AuthManager {
       await new Promise(r => setTimeout(r, 1000));
 
       // Ensure input fields are ready
-      await page.waitForSelector('#login_ppt', { visible: true, timeout: 6000 });
+      const phoneSelector = (await page.$('#login_ppt')) ? '#login_ppt' : 'input[placeholder*="手机"], input[placeholder*="邮箱"], input[name="passport"]';
+      const pwdSelector = (await page.$('#pwd')) ? '#pwd' : 'input[type="password"]';
+
+      await page.waitForSelector(phoneSelector, { visible: true, timeout: 6000 }).catch(() => {});
 
       // Type phone
       onLog(`Tự động điền tài khoản: ${this.credentials.phone}...`, 'info');
-      await page.click('#login_ppt');
+      await page.click(phoneSelector);
       await page.keyboard.down('Control');
       await page.keyboard.press('KeyA');
       await page.keyboard.up('Control');
@@ -217,7 +220,7 @@ class AuthManager {
       await page.keyboard.type(this.credentials.phone, { delay: 20 });
 
       // Type password
-      await page.click('#pwd');
+      await page.click(pwdSelector);
       await page.keyboard.down('Control');
       await page.keyboard.press('KeyA');
       await page.keyboard.up('Control');
@@ -239,11 +242,11 @@ class AuthManager {
       onLog('Nhấn nút Đăng Nhập...', 'info');
       await page.click('#_js_loginBtn');
 
-      onLog('Đang kiểm tra và tự động giải Captcha kéo thả...', 'info');
+      onLog('Đang kiểm tra và tự động giải Captcha kéo thả / hình ảnh...', 'info');
       await new Promise(r => setTimeout(r, 2500));
 
-      // Solve slider captcha
-      await solveTencentCaptcha(page, { onLog, maxRetries: 6 });
+      // Solve both slider and image captchas with full retry support
+      await solveAllCaptchas(page, { onLog, maxRetries: 6 });
 
       await new Promise(r => setTimeout(r, 4000));
 

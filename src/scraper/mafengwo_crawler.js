@@ -5,7 +5,7 @@ puppeteer.use(StealthPlugin());
 const fs = require('fs-extra');
 const path = require('path');
 const { cleanArticleHtml, sanitizeFilename } = require('./html_cleaner');
-const { solveTencentCaptcha } = require('./captcha_solver');
+const { solveTencentCaptcha, solveImageCaptcha, solveAllCaptchas } = require('./captcha_solver');
 const { getDataDir, getAppBaseDir, logError } = require('../utils/error_logger');
 const { getUrlExcelPath, getExistingUrls, appendUrlIfNotExists, URL_EXCEL_FILENAME, getCollectedUrlsExcelPath, appendUrlsBatch, COLLECTED_URLS_FILENAME } = require('../excel/excel_manager');
 const Tesseract = require('tesseract.js');
@@ -390,7 +390,7 @@ class MafengwoCrawler {
       if (hasCaptcha) {
         this.consecutiveCaptchaTriggers++;
         this.log(`[Bảo vệ WAF] Phát hiện thử thách bảo mật Tencent Captcha (Lần liên tiếp: ${this.consecutiveCaptchaTriggers})...`, 'warn');
-        const solved = await solveTencentCaptcha(pageInstance, {
+        const solved = await solveAllCaptchas(pageInstance, {
           onLog: (m, t) => this.log(m, t),
           maxRetries: 8
         });
@@ -429,7 +429,7 @@ class MafengwoCrawler {
     await this.sleep(2500);
 
     // Solve initial landing captcha if presented
-    await solveTencentCaptcha(pageInstance, {
+    await solveAllCaptchas(pageInstance, {
       onLog: (m, t) => this.log(m, t),
       maxRetries: 5
     });
@@ -484,9 +484,9 @@ class MafengwoCrawler {
     await pageInstance.click('#_js_loginBtn');
     await this.sleep(2500);
 
-    // Solve slider captcha
-    this.log('Tự động giải Captcha kéo thả để hoàn tất đăng nhập...', 'info');
-    await solveTencentCaptcha(pageInstance, {
+    // Solve captchas
+    this.log('Tự động giải Captcha kéo thả / hình ảnh để hoàn tất đăng nhập...', 'info');
+    await solveAllCaptchas(pageInstance, {
       onLog: (m, t) => this.log(m, t),
       maxRetries: 6
     });
